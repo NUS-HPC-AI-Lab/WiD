@@ -87,6 +87,7 @@ We follow the preprocessing instructions in [PixelDiT](https://github.com/NVlabs
 
  Training uses 8 GPUs, batch size 32 per GPU (global batch 256), BF16, EMA decay 0.9999, and REPA weight 0.5.
  We also provide the [training logs](training_logs/imagenet256_0_to_2500k) on ImageNet 256×256. You will be able to reproduce our training with the same hardware stated in our paper.
+
 **0 → 800K:**
 
 ```bash

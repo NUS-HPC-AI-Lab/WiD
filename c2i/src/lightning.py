@@ -274,7 +274,7 @@ class LightningModel(pl.LightningModule):
     
     def on_train_end(self) -> None:
         if self.profiler:
-            self.profiler.summary()
+            self.profiler.print_step_stats()
 
 
     def training_step(self, batch, batch_idx):
