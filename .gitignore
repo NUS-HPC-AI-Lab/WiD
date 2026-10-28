@@ -1,0 +1,21 @@
+Qwen
+# Keep model weights and generated runs outside version control.
+ckpts
+src/diffusion/flow_matching/sampling_back.py
+__pycache__/
+*.pyc
+.venv/
+workdirs/
+/data/
+/pretrained/
+/wandb/
+/.cache/
+*.ckpt
+*.partial
+local*.yaml
+*.log
+/output/
+/outputs/
+/statistics_recomputed/
+/.gradio/
+.DS_Store

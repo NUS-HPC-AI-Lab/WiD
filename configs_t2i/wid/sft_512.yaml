@@ -1,0 +1,127 @@
+seed_everything: 0
+fixed_run_seed: 2026090802
+# A new deterministic RNG segment: SFT is a stage reset, not a same-stage resume.
+segment_id: 1
+init_ckpt_path: null
+ckpt_path: null
+tags:
+  exp: &exp wid_deco_sft_512
+
+trainer:
+  default_root_dir: workdirs
+  accelerator: gpu
+  strategy: ddp
+  devices: 8
+  num_nodes: 1
+  accumulate_grad_batches: 4
+  precision: bf16-mixed
+  logger:
+    class_path: lightning.pytorch.loggers.CSVLogger
+    init_args:
+      save_dir: workdirs/metrics
+      name: *exp
+  num_sanity_val_steps: 0
+  limit_val_batches: 0
+  max_steps: 40000
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: norm
+  val_check_interval: 5000
+  check_val_every_n_epoch: null
+  log_every_n_steps: 50
+  deterministic: null
+  inference_mode: true
+  use_distributed_sampler: false
+  callbacks:
+    - class_path: src.callbacks.wid_stages.TrainingCheckpoint
+      init_args:
+        every_n_train_steps: 5000
+    - class_path: src.callbacks.grad.GradientMonitor
+      init_args:
+        norm_type: 2
+        every_n_optimizer_steps: 50
+    - class_path: src.callbacks.wid_stages.SFTTransition
+  plugins:
+    - src.plugins.bd_env.BDEnvironment
+
+model:
+  checkpoint_per_rank_rng: true
+  resume_rng_policy: "off"
+  assert_rank_distinct_rng: true
+  vae:
+    class_path: src.models.autoencoder.pixel.PixelAE
+  denoiser:
+    class_path: src.models.transformer.wid_t2i.DeCoWiD
+    init_args:
+      in_channels: 3
+      patch_size: 16
+      num_groups: 24
+      hidden_size: &hidden_dim 1536
+      txt_embed_dim: &txt_embed_dim 2048
+      txt_max_length: 128
+      num_text_blocks: 4
+      decoder_hidden_size: 32
+      num_encoder_blocks: 16
+      num_decoder_blocks: 3
+      prior_path: statistics/pca_uncentered.pt
+      rank: 768
+      train_encoder_basis: true
+      train_decoder_basis: true
+      train_gains: true
+      eigenvalue_floor: 1.0e-6
+      denominator_floor: 1.0e-12
+      balanced_fraction: 0.5
+  conditioner:
+    class_path: src.models.conditioner.qwen3_text_encoder.Qwen3TextEncoder
+    init_args:
+      weight_path: pretrained/Qwen/Qwen3-1.7B
+      embed_dim: *txt_embed_dim
+      max_length: 128
+  diffusion_trainer:
+    class_path: src.diffusion.flow_matching.training_repa_DeCo.REPATrainer
+    init_args:
+      lognorm_t: true
+      feat_loss_weight: 0.5
+      timeshift: 4.0
+      encoder:
+        class_path: src.models.encoder.DINOv2
+        init_args:
+          weight_path: pretrained/dinov2/dinov2_vitb14_pretrain.pth
+          local_repo_path: pretrained/dinov2/facebookresearch_dinov2_main
+      align_layer: 6
+      proj_denoiser_dim: *hidden_dim
+      proj_hidden_dim: *hidden_dim
+      proj_encoder_dim: 768
+      scheduler: &scheduler src.diffusion.flow_matching.scheduling.LinearScheduler
+  diffusion_sampler:
+    class_path: src.diffusion.flow_matching.adam_sampling.AdamLMSampler
+    init_args:
+      num_steps: 25
+      guidance: 4.0
+      timeshift: 3.0
+      order: 2
+      scheduler: *scheduler
+      guidance_fn: src.diffusion.base.guidance.simple_guidance_fn
+  ema_tracker:
+    class_path: src.callbacks.simple_ema.SimpleEMA
+    init_args:
+      decay: 0.9999
+  optimizer:
+    class_path: torch.optim.AdamW
+    init_args:
+      lr: 1.0e-5
+      betas: [0.9, 0.999]
+      weight_decay: 0.0
+
+data:
+  train_dataset:
+    class_path: src.data.dataset.wid_sft.VerifiedImageTextSFT
+    init_args:
+      root: data/BLIP3o-60k-extracted
+      resolution: 512
+  eval_dataset: null
+  pred_dataset: null
+  train_batch_size: 16
+  train_num_workers: 8
+  train_prefetch_factor: 4
+  pred_batch_size: 8
+  pred_num_workers: 1
